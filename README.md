@@ -4,7 +4,6 @@ This is a simple script for deploying local ChatBot with any available decoder-o
 
 ```bash
 git clone https://github.com/namespace-Pt/SimpleChat.git
-
 cd SimpleChat
 pip install -r requirements
 
@@ -28,9 +27,10 @@ python demo.py --model_name_or_path=EleutherAI/gpt-neo-125m --no_prompt
   ...
 
   User: <Current Input>
+  Assistant: 
   ```
   
-- By default, the hidden states of conversation histories are cached for faster decoding, you can turn of caching by specifying `--no_cache` when running the script
+- By default, the hidden states of conversation histories are cached for faster decoding, you can turn off caching by specifying `--no_cache` when running the script
 
 ## TODOs
 - [ ] user-specified chat prompts
