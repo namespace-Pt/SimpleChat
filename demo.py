@@ -363,11 +363,11 @@ def reset_state():
 @dataclass
 class DemoArgs:
     model_name_or_path: str = field(
-        default='gpt2',
+        default='EleutherAI/gpt-neo-125m',
         metadata={'help': 'Path to pretrained model or model identifier from huggingface.co/models'}
     )
     model_save_dir: str = field(
-        default=None,
+        default='/share/LMs',
         metadata={'help': 'Default path to save language models'}
     )
     padding_side: str = field(
@@ -383,7 +383,7 @@ class DemoArgs:
         metadata={'help': 'Cache past key values for faster decoding?'}
     )
     no_prompt: bool = field(
-        default=False,
+        default=True,
         metadata={'help': 'Disable chatting prompts? ([Round K] User: xxx\n\n Assistant: xxx\n\n)'}
     )
 
@@ -409,8 +409,8 @@ if __name__ == "__main__":
             with gr.Column(scale=1):         
                 max_length = gr.Slider(0, 10000, value=1024, step=1.0, label="Max Length", interactive=True)
                 max_new_tokens = gr.Slider(0, 1000, value=100, step=1.0, label="Max new tokens", interactive=True)
-                top_p = gr.Slider(0, 1, value=0.8, step=0.01, label="Top P", interactive=True)
-                temperature = gr.Slider(0, 1, value=0.95, step=0.01, label="Temperature", interactive=True)
+                top_p = gr.Slider(0, 1, value=1, step=0.01, label="Top P", interactive=True)
+                temperature = gr.Slider(0, 1, value=0, step=0.01, label="Temperature", interactive=True)
                 emptyBtn = gr.Button("Clear History")
             
         history = gr.State([])
