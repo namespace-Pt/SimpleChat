@@ -1,5 +1,6 @@
 import torch
 import copy
+import inspect
 import warnings
 import mdtex2html
 import gradio as gr
@@ -40,6 +41,15 @@ class Chatter():
     def process_response(self, response):
         response = response.strip()
         return response
+    
+    def remove_unused_columns(self, inputs):
+        signature = inspect.signature(self.model.forward)
+        signature_columns = list(signature.parameters.keys())
+        ignored_columns = list(set(inputs.keys()) - set(signature_columns))
+        if len(ignored_columns):
+            for ignored_column in ignored_columns:
+                inputs.pop(ignored_column)
+        return inputs
 
     def build_inputs(self, query: str, history: List[Tuple[str, str]] = None):
         if history is None:
@@ -55,6 +65,7 @@ class Chatter():
             prompt += query
 
         inputs = self.tokenizer(prompt, return_tensors="pt")
+        inputs = self.remove_unused_columns(inputs)
         inputs = inputs.to(self.model.device)
         return inputs
 
@@ -63,12 +74,14 @@ class Chatter():
             history = []
         if self.add_chat_prompt:
             prompt = "[Round {}]\n\nUser: {}\n\nAssistant: ".format(len(history) + 1, query)
-            if history:
+            if len(history):
                 prompt = "\n\n" + prompt
         else:
             prompt = query
-
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+        
+        inputs = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=len(history) == 0)
+        inputs = self.remove_unused_columns(inputs)
+        inputs = inputs.to(self.model.device)
         return inputs
 
     @torch.no_grad()
@@ -135,13 +148,13 @@ class Chatter():
         print(f"Inputs: {self.tokenizer.batch_decode(inputs['input_ids'])}")
 
         if past_key_values is not None:
-            if "ChatGLMModel" in self.model.config.architectures:
-                past_length = past_key_values[0][0].shape[-2]
-                if self.transformer.pre_seq_len is not None:
-                    past_length -= self.transformer.pre_seq_len
-                inputs.position_ids += past_length
+            # if "ChatGLMModel" in self.model.config.architectures:
+            #     past_length = past_key_values[0][0].shape[-2]
+            #     if self.transformer.pre_seq_len is not None:
+            #         past_length -= self.transformer.pre_seq_len
+            #     inputs.position_ids += past_length
             
-            else:
+            # else:
                 # NOTE: split inputs into two parts: all previous tokens and the last token
                 previous_inputs = {}
                 current_inputs = {}
@@ -157,8 +170,7 @@ class Chatter():
                 # NOTE: in most models, positions_ids will be automatically handled inside the model according to past_length;
                 # when position_ids are returned by the tokenizer, we need to explicitly modify it according to past_key_values
                 if "position_ids" in previous_inputs:
-                    input_ids = previous_inputs['input_ids']
-                    previous_inputs["position_ids"] = torch.arange(past_length, input_ids.shape[-1] + past_length, dtype=torch.long, device=input_ids.device)
+                    previous_inputs["position_ids"] = previous_inputs["attention_mask"].cumsum(-1) - 1
 
                 previous_outputs = self.model(**previous_inputs, past_key_values=past_key_values)
                 past_key_values = previous_outputs.past_key_values
@@ -169,8 +181,7 @@ class Chatter():
                 # update attention mask by 1 because when generating, the model automatically truncate input_ids to the last token 
                 current_inputs["attention_mask"] = torch.cat((attention_mask.new_ones(1, past_length), attention_mask[:, :1]), dim=-1)
                 if "position_ids" in current_inputs:
-                    input_ids = current_inputs['input_ids']
-                    current_inputs["position_ids"] = torch.arange(past_length, input_ids.shape[-1] + past_length, dtype=torch.long, device=input_ids.device)
+                    previous_inputs["position_ids"] = previous_inputs["attention_mask"].cumsum(-1) - 1
 
                 inputs = current_inputs
 
@@ -305,32 +316,32 @@ def postprocess(self, y):
 def parse_text(text):
     lines = text.split("\n")
     lines = [line for line in lines if line != ""]
-    count = 0
-    if not demo_args.no_html:
-        for i, line in enumerate(lines):
-            if "```" in line:
-                count += 1
-                items = line.split('`')
-                if count % 2 == 1:
-                    lines[i] = f'<pre><code class="language-{items[-1]}">'
-                else:
-                    lines[i] = f'<br></code></pre>'
-            else:
-                if i > 0:
-                    if count % 2 == 1:
-                        line = line.replace("`", "\`")
-                        line = line.replace("<", "&lt;")
-                        line = line.replace(">", "&gt;")
-                        line = line.replace(" ", "&nbsp;")
-                        line = line.replace("*", "&ast;")
-                        line = line.replace("_", "&lowbar;")
-                        line = line.replace("-", "&#45;")
-                        line = line.replace(".", "&#46;")
-                        line = line.replace("!", "&#33;")
-                        line = line.replace("(", "&#40;")
-                        line = line.replace(")", "&#41;")
-                        line = line.replace("$", "&#36;")
-                    lines[i] = "<br>"+line
+    # count = 0
+    # if not demo_args.no_html:
+    #     for i, line in enumerate(lines):
+    #         if "```" in line:
+    #             count += 1
+    #             items = line.split('`')
+    #             if count % 2 == 1:
+    #                 lines[i] = f'<pre><code class="language-{items[-1]}">'
+    #             else:
+    #                 lines[i] = f'<br></code></pre>'
+    #         else:
+    #             if i > 0:
+    #                 if count % 2 == 1:
+    #                     line = line.replace("`", "\`")
+    #                     line = line.replace("<", "&lt;")
+    #                     line = line.replace(">", "&gt;")
+    #                     line = line.replace(" ", "&nbsp;")
+    #                     line = line.replace("*", "&ast;")
+    #                     line = line.replace("_", "&lowbar;")
+    #                     line = line.replace("-", "&#45;")
+    #                     line = line.replace(".", "&#46;")
+    #                     line = line.replace("!", "&#33;")
+    #                     line = line.replace("(", "&#40;")
+    #                     line = line.replace(")", "&#41;")
+    #                     line = line.replace("$", "&#36;")
+    #                 lines[i] = "<br>"+line
     text = "".join(lines)
     return text
 
@@ -391,6 +402,10 @@ class DemoArgs:
         default=True,
         metadata={'help': 'Parse html?'}
     )
+    use_fast: bool = field(
+        default=True,
+        metadata={'help': 'Use fast tokenizer?'}
+    )
 
 
 if __name__ == "__main__":
@@ -398,7 +413,7 @@ if __name__ == "__main__":
     demo_args, = parser.parse_args_into_dataclasses()
 
     print(f"Loading model and tokenizer from {demo_args.model_name_or_path}...")
-    tokenizer = AutoTokenizer.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, padding_side=demo_args.padding_side, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, padding_side=demo_args.padding_side, trust_remote_code=True, use_fast=demo_args.use_fast)
     model = AutoModelForCausalLM.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, trust_remote_code=True)
     model = model.to(demo_args.device).eval()
     chatter = Chatter(model, tokenizer, add_chat_prompt=not demo_args.no_prompt, use_cache=not demo_args.no_cache)
