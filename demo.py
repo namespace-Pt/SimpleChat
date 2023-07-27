@@ -91,7 +91,7 @@ class Chatter():
             history = []
         if logits_processor is None:
             logits_processor = LogitsProcessorList()
-        logits_processor.append(InvalidScoreLogitsProcessor())
+        logits_processor.append(InvalidScoreLogitsProcessor(eos_token_id=tokenizer.eos_token_id))
         gen_kwargs = {
             "max_length": max_length, 
             "num_beams": num_beams, 
@@ -314,35 +314,36 @@ def postprocess(self, y):
     return y
 
 def parse_text(text):
-    lines = text.split("\n")
-    lines = [line for line in lines if line != ""]
+    # lines = text.split("\n")
+    # lines = [line for line in lines if line != ""]
+    # text = "".join(lines)
     # count = 0
-    # if not demo_args.no_html:
-    #     for i, line in enumerate(lines):
-    #         if "```" in line:
-    #             count += 1
-    #             items = line.split('`')
-    #             if count % 2 == 1:
-    #                 lines[i] = f'<pre><code class="language-{items[-1]}">'
-    #             else:
-    #                 lines[i] = f'<br></code></pre>'
+    # for i, line in enumerate(lines):
+    #     if "```" in line:
+    #         count += 1
+    #         items = line.split('`')
+    #         if count % 2 == 1:
+    #             lines[i] = f'<pre><code class="language-{items[-1]}">'
     #         else:
-    #             if i > 0:
-    #                 if count % 2 == 1:
-    #                     line = line.replace("`", "\`")
-    #                     line = line.replace("<", "&lt;")
-    #                     line = line.replace(">", "&gt;")
-    #                     line = line.replace(" ", "&nbsp;")
-    #                     line = line.replace("*", "&ast;")
-    #                     line = line.replace("_", "&lowbar;")
-    #                     line = line.replace("-", "&#45;")
-    #                     line = line.replace(".", "&#46;")
-    #                     line = line.replace("!", "&#33;")
-    #                     line = line.replace("(", "&#40;")
-    #                     line = line.replace(")", "&#41;")
-    #                     line = line.replace("$", "&#36;")
-    #                 lines[i] = "<br>"+line
-    text = "".join(lines)
+    #             lines[i] = f'<br></code></pre>'
+    #     else:
+    #         if i > 0:
+    #             if count % 2 == 1:
+    #                 line = line.replace("`", "\`")
+    #                 line = line.replace("<", "&lt;")
+    #                 line = line.replace(">", "&gt;")
+    #                 line = line.replace(" ", "&nbsp;")
+    #                 line = line.replace("*", "&ast;")
+    #                 line = line.replace("_", "&lowbar;")
+    #                 line = line.replace("-", "&#45;")
+    #                 line = line.replace(".", "&#46;")
+    #                 line = line.replace("!", "&#33;")
+    #                 line = line.replace("(", "&#40;")
+    #                 line = line.replace(")", "&#41;")
+    #                 line = line.replace("$", "&#36;")
+    #             lines[i] = "<br>"+line
+
+    text = text.strip()
     return text
 
 
@@ -406,6 +407,22 @@ class DemoArgs:
         default=True,
         metadata={'help': 'Use fast tokenizer?'}
     )
+    fp16: bool = field(
+        default=False,
+        metadata={'help': 'Use fp16 model?'}
+    )
+    bf16: bool = field(
+        default=False,
+        metadata={'help': 'Use bf16 model?'}
+    )
+    def __post_init__(self):
+        if self.fp16:
+            torch_dtype = torch.float16
+        elif self.bf16:
+            torch_dtype = torch.bfloat16
+        else:
+            torch_dtype = "auto"
+        self.torch_dtype = torch_dtype
 
 
 if __name__ == "__main__":
@@ -414,7 +431,7 @@ if __name__ == "__main__":
 
     print(f"Loading model and tokenizer from {demo_args.model_name_or_path}...")
     tokenizer = AutoTokenizer.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, padding_side=demo_args.padding_side, trust_remote_code=True, use_fast=demo_args.use_fast)
-    model = AutoModelForCausalLM.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, trust_remote_code=True, torch_dtype=demo_args.torch_dtype)
     model = model.to(demo_args.device).eval()
     chatter = Chatter(model, tokenizer, add_chat_prompt=not demo_args.no_prompt, use_cache=not demo_args.no_cache)
 
@@ -427,12 +444,12 @@ if __name__ == "__main__":
                 chatbot = gr.Chatbot()
                 user_input = gr.Textbox(show_label=False, placeholder="Input...")
             with gr.Column(scale=1):         
-                max_length = gr.Slider(0, 10000, value=1024, step=1.0, label="Max Length", interactive=True)
+                max_length = gr.Slider(0, 8192, value=2048, step=1.0, label="Max Length", interactive=True)
                 max_new_tokens = gr.Slider(0, 1000, value=100, step=1.0, label="Max new tokens", interactive=True)
                 top_p = gr.Slider(0, 1, value=1, step=0.01, label="Top P", interactive=True)
-                temperature = gr.Slider(0, 1, value=0, step=0.01, label="Temperature", interactive=True)
+                temperature = gr.Slider(0, 1, value=1, step=0.01, label="Temperature", interactive=True)
                 emptyBtn = gr.Button("Clear History")
-            
+
         history = gr.State([])
         past_key_values = gr.State(None)
         user_input.submit(predict, [user_input, chatbot, max_length, max_new_tokens, top_p, temperature, history, past_key_values],
