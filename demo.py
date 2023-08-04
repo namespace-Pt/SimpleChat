@@ -148,42 +148,29 @@ class Chatter():
         print(f"Inputs: {self.tokenizer.batch_decode(inputs['input_ids'])}")
 
         if past_key_values is not None:
-            # if "ChatGLMModel" in self.model.config.architectures:
-            #     past_length = past_key_values[0][0].shape[-2]
-            #     if self.transformer.pre_seq_len is not None:
-            #         past_length -= self.transformer.pre_seq_len
-            #     inputs.position_ids += past_length
-            
-            # else:
-                # NOTE: split inputs into two parts: all previous tokens and the last token
-                previous_inputs = {}
-                current_inputs = {}
-                for k, v in inputs.items():
-                    previous_inputs[k] = v[:, :-1]
-                    current_inputs[k] = v[:, -1:]
-                past_length = past_key_values[0][0].shape[-2]
+            # NOTE: split inputs into two parts: all previous tokens and the last token
+            previous_inputs = {}
+            current_inputs = {}
+            for k, v in inputs.items():
+                previous_inputs[k] = v[:, :-1]
+                current_inputs[k] = v[:, -1:]
+            past_length = past_key_values[0][0].shape[-2]
 
+            if previous_inputs["input_ids"].shape[1] > 0:
                 # encode all previous tokens to get past_key_values
                 attention_mask = previous_inputs["attention_mask"]
                 # NOTE: we must extend attention mask according to https://github.com/huggingface/transformers/issues/24741
                 previous_inputs["attention_mask"] = torch.cat((attention_mask.new_ones(1, past_length), attention_mask), dim=-1)
-                # NOTE: in most models, positions_ids will be automatically handled inside the model according to past_length;
-                # when position_ids are returned by the tokenizer, we need to explicitly modify it according to past_key_values
-                if "position_ids" in previous_inputs:
-                    previous_inputs["position_ids"] = previous_inputs["attention_mask"].cumsum(-1) - 1
 
                 previous_outputs = self.model(**previous_inputs, past_key_values=past_key_values)
                 past_key_values = previous_outputs.past_key_values
-
                 # update past_length because there are newly encoded tokens
                 past_length = previous_outputs.past_key_values[0][0].size(-2)
-                attention_mask = current_inputs["attention_mask"]
-                # update attention mask by 1 because when generating, the model automatically truncate input_ids to the last token 
-                current_inputs["attention_mask"] = torch.cat((attention_mask.new_ones(1, past_length), attention_mask[:, :1]), dim=-1)
-                if "position_ids" in current_inputs:
-                    previous_inputs["position_ids"] = previous_inputs["attention_mask"].cumsum(-1) - 1
 
-                inputs = current_inputs
+            attention_mask = current_inputs["attention_mask"]
+            # update attention mask by 1 because when generating, the model automatically truncate input_ids to the last token 
+            current_inputs["attention_mask"] = torch.cat((attention_mask.new_ones(1, past_length), attention_mask[:, :1]), dim=-1)
+            inputs = current_inputs
 
         for outputs in self.stream_generate(**inputs, past_key_values=past_key_values, **gen_kwargs):
             if self.use_cache:
@@ -342,8 +329,7 @@ def parse_text(text):
     #                 line = line.replace(")", "&#41;")
     #                 line = line.replace("$", "&#36;")
     #             lines[i] = "<br>"+line
-
-    text = text.strip()
+    # text = text.strip()
     return text
 
 
@@ -423,6 +409,10 @@ class DemoArgs:
         else:
             torch_dtype = "auto"
         self.torch_dtype = torch_dtype
+        try:
+            self.device = int(self.device)
+        except:
+            pass
 
 
 if __name__ == "__main__":
