@@ -377,6 +377,10 @@ class DemoArgs:
         default="cpu",
         metadata={'help': 'What device to put the model?'}
     )
+    device_map: Optional[str] = field(
+        default=None,
+        metadata={'help': 'Device map for loading on cuda.'}
+    )
     no_cache: bool = field(
         default=False,
         metadata={'help': 'Cache past key values for faster decoding?'}
@@ -393,6 +397,10 @@ class DemoArgs:
         default=True,
         metadata={'help': 'Use fast tokenizer?'}
     )
+    local_files_only: bool = field(
+        default=False,
+        metadata={'help': 'Find model from local cache?'}
+    )
     fp16: bool = field(
         default=False,
         metadata={'help': 'Use fp16 model?'}
@@ -408,11 +416,10 @@ class DemoArgs:
             torch_dtype = torch.bfloat16
         else:
             torch_dtype = "auto"
+
         self.torch_dtype = torch_dtype
-        try:
+        if self.device != "cpu" and not self.device.startswith("cuda:"):
             self.device = int(self.device)
-        except:
-            pass
 
 
 if __name__ == "__main__":
@@ -420,9 +427,12 @@ if __name__ == "__main__":
     demo_args, = parser.parse_args_into_dataclasses()
 
     print(f"Loading model and tokenizer from {demo_args.model_name_or_path}...")
-    tokenizer = AutoTokenizer.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, padding_side=demo_args.padding_side, trust_remote_code=True, use_fast=demo_args.use_fast)
-    model = AutoModelForCausalLM.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, trust_remote_code=True, torch_dtype=demo_args.torch_dtype)
-    model = model.to(demo_args.device).eval()
+    tokenizer = AutoTokenizer.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, padding_side=demo_args.padding_side, trust_remote_code=True, use_fast=demo_args.use_fast, local_files_only=demo_args.local_files_only)
+    model = AutoModelForCausalLM.from_pretrained(demo_args.model_name_or_path, cache_dir=demo_args.model_save_dir, trust_remote_code=True, torch_dtype=demo_args.torch_dtype, local_files_only=demo_args.local_files_only, device_map=demo_args.device_map)
+    if demo_args.device_map is None:
+        model.to(demo_args.device)
+
+    model.eval()
     chatter = Chatter(model, tokenizer, add_chat_prompt=not demo_args.no_prompt, use_cache=not demo_args.no_cache)
 
     gr.Chatbot.postprocess = postprocess
